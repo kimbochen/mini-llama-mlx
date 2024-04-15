@@ -1,0 +1,7 @@
+mlx
+mlx-lm
+sentencepiece
+notebook
+ipywidgets
+datasets
+asitop
