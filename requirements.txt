@@ -1,7 +1,7 @@
-mlx
-mlx-lm
-sentencepiece
-notebook
-ipywidgets
-datasets
-asitop
+mlx==0.9.1
+mlx-lm==0.7.0
+sentencepiece==0.2.0
+notebook==7.1.2
+ipywidgets==8.1.2
+datasets==2.18.0
+asitop==0.0.24
