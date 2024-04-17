@@ -47,21 +47,30 @@ class SelfAttention(nn.Module):
 
         return out_BTD
 
+    def init_params(self, cfg):
+        self.attn_proj.apply(nn.init.normal(0.0, cfg.d_embd**0.5))
+        self.out_proj.apply(nn.init.normal(0.0, cfg.d_embd**0.5))
+
 
 class FeedForwardNet(nn.Module):
     def __init__(self, d_embd, ffn_mult, **kwargs):
         super().__init__()
         hidden_dim = int((4 * d_embd) * 2 / 3)  # C
-        hidden_dim = ffn_mult * ((hidden_dim + ffn_mult - 1) // ffn_mult)  # The next multiple of ffn_mult
+        self.hidden_dim = ffn_mult * ((hidden_dim + ffn_mult - 1) // ffn_mult)  # The next multiple of ffn_mult
 
-        self.gate_proj = nn.Linear(d_embd, hidden_dim, bias=False)
-        self.up_proj = nn.Linear(d_embd, hidden_dim, bias=False)
-        self.down_proj = nn.Linear(hidden_dim, d_embd, bias=False)
+        self.gate_proj = nn.Linear(d_embd, self.hidden_dim, bias=False)
+        self.up_proj = nn.Linear(d_embd, self.hidden_dim, bias=False)
+        self.down_proj = nn.Linear(self.hidden_dim, d_embd, bias=False)
 
     def __call__(self, x_BTD):
         h_BTC = nn.silu(self.gate_proj(x_BTD)) * self.up_proj(x_BTD)  # SwiGLU
         out_BTD = self.down_proj(h_BTC)
         return out_BTD
+
+    def init_params(self, cfg):
+        self.gate_proj.apply(nn.init.normal(0.0, cfg.d_embd**-0.5))
+        self.up_proj.apply(nn.init.normal(0.0, cfg.d_embd**-0.5))
+        self.down_proj.apply(nn.init.normal(0.0, self.hidden_dim**-0.5))
 
 
 class TransformerBlock(nn.Module):
@@ -76,6 +85,12 @@ class TransformerBlock(nn.Module):
         h_BTD = x_BTD + self.attn(self.pre_norm(x_BTD), mask_TT)
         out_BTD = h_BTD + self.ffn(self.ffn_norm(h_BTD))
         return out_BTD
+
+    def init_params(self, cfg):
+        self.pre_norm.apply(nn.init.constant(1.0))
+        self.attn.init_params(cfg)
+        self.ffn_norm.apply(nn.init.constant(1.0))
+        self.ffn.init_params(cfg)
 
 
 class LLaMA(nn.Module):
@@ -100,6 +115,13 @@ class LLaMA(nn.Module):
         logits_BTV = self.lm_head(h_BTD)
 
         return logits_BTV
+
+    def init_params(self, cfg):
+        self.embd_toks.apply(nn.init.normal(0.0, 1.0))
+        for layer in self.layers:
+            layer.init_params(cfg)
+        self.out_norm.apply(nn.init.constant(1.0))
+        self.lm_head.apply(nn.init.normal(0.0, cfg.d_embd**-0.5))
 
 
 if __name__ == '__main__':
