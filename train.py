@@ -15,42 +15,57 @@ from llama import LLaMAConfig, LLaMA
 class TrainerConfig:
     bsz: int = 16
     lr: float = 1e-4
-    n_steps: int = 800
+    n_steps: int = 100
+    warmup_steps: int = 10
     pad_token_id: int = 65535  # Max value of uint16
 
 
-def forward(model, inputs, targets, pad_token_id):
-    pad_mask = (inputs != pad_token_id)
-    logits = model(inputs * pad_mask)
-
-    logprobs = nn.losses.cross_entropy(logits, targets)
-    logprobs_m = logprobs * pad_mask
-    loss = logprobs_m.sum() / pad_mask.sum()
-
-    return loss
+def build_lr_schedule(cfg_t):
+    warmup = optim.schedulers.linear_schedule(0.0, cfg_t.lr, cfg_t.warmup_steps)
+    decay = optim.cosine_decay(cfg_t.lr, cfg_t.n_steps-cfg_t.warmup_steps)
+    lr_schedule = optim.join_schedules([warmup, decay], [cfg_t.warmup_steps])
+    return lr_schedule
 
 
 def train():
+    mx.random.seed(3985)
     cfg_t = TrainerConfig()
     cfg_m = LLaMAConfig(n_layers=6, d_embd=512, n_heads=8)
 
-    load_data = config_dataloader(cfg_t.bsz, cfg_m.seq_len, cfg_t.pad_token_id)
+    dataloader = config_dataloader(seq_len=cfg_m.seq_len, **asdict(cfg_t))
     model = LLaMA(**asdict(cfg_m))
-    optimizer = optim.AdamW(learning_rate=cfg_t.lr)
+    model.init_params(cfg_m)
+    optimizer = optim.AdamW(learning_rate=build_lr_schedule(cfg_t))
 
-    forward_fn = partial(forward, pad_token_id=cfg_t.pad_token_id)
-    state = [model.state, optimizer.state]
-    @partial(mx.compile, inputs=state, outputs=state)
-    def train_step(inputs, targets):
-        loss_and_grad = nn.value_and_grad(model, forward_fn)
-        loss, grads = loss_and_grad(model, inputs, targets)
-        optimizer.update(model, grads)
+
+    def train_forward_pass(model_, inputs_BT, labels_BT):
+        pad_mask_BT = (inputs_BT != cfg_t.pad_token_id)
+        logits_BTV = model_(inputs_BT * pad_mask_BT)
+        logprobs_BT = nn.losses.cross_entropy(logits_BTV, labels_BT)
+        loss = (logprobs_BT * pad_mask_BT).sum() / pad_mask_BT.sum()
         return loss
 
-    for inputs, labels in (pbar := tqdm(load_data(cfg_t.n_steps), total=cfg_t.n_steps)):
-        loss = train_step(inputs, labels)
-        mx.eval(state, loss)
-        pbar.set_description(f'loss={loss.item():.4f} | peak_mem={(mx.metal.get_peak_memory() / 2**30):.2f}GB')
+
+    state = [model.state, optimizer.state]
+    @partial(mx.compile, inputs=state, outputs=state)
+    def train_step(inputs_BT, labels_BT):
+        loss_and_grad = nn.value_and_grad(model, train_forward_pass)
+        loss, grads = loss_and_grad(model, inputs_BT, labels_BT)
+        optimizer.update(model, grads)
+        ppl = loss.exp()
+        return loss, ppl
+
+
+    model.train()
+
+    for inputs_BT, labels_BT in (pbar := tqdm(dataloader, total=cfg_t.n_steps)):
+        loss, ppl = train_step(inputs_BT, labels_BT)
+        mx.eval(state, loss, ppl)
+        pbar.set_description((
+            f'loss={loss.item():.4f} | ppl={ppl.item():.4f} | lr={optimizer.learning_rate.item():.2e} | '
+            f'peak_mem={(mx.metal.get_peak_memory() / 2**30):.2f}G'
+        ))
+
 
     mx.save_safetensors('mini-llama-wikitext', dict(tree_flatten(model)))
 
