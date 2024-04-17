@@ -48,10 +48,15 @@ def config_dataloader(bsz, seq_len, pad_token_id):
     bblk_size = bsz * blk_size  # Batch block size
     n_batches = len(train_examples) - blk_size + 1
 
-    def load_data_():
-        for i in range(n_batches):
-            bblk = train_examples[i:i+bblk_size].reshape([bsz, blk_size])
-            yield bblk[:, :-1], bblk[:, 1:]
+    def load_data_(n_steps):
+        step_idx = 0
+        while True:
+            for i in range(n_batches):
+                if step_idx == n_steps:
+                    return
+                step_idx += 1
+                bblk = train_examples[i:i+bblk_size].reshape([bsz, blk_size])
+                yield bblk[:, :-1], bblk[:, 1:]
 
     return load_data_
 
