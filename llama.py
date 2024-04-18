@@ -4,6 +4,7 @@ import mlx.core as mx
 from mlx import nn
 from mlx.nn import MultiHeadAttention as MHA
 from mlx.core.fast import scaled_dot_product_attention
+from mlx.utils import tree_flatten, tree_unflatten, tree_map
 
 
 
@@ -47,10 +48,6 @@ class SelfAttention(nn.Module):
 
         return out_BTD
 
-    def init_params(self, cfg):
-        self.attn_proj.apply(nn.init.normal(0.0, cfg.d_embd**0.5))
-        self.out_proj.apply(nn.init.normal(0.0, cfg.d_embd**0.5))
-
 
 class FeedForwardNet(nn.Module):
     def __init__(self, d_embd, ffn_mult, **kwargs):
@@ -67,11 +64,6 @@ class FeedForwardNet(nn.Module):
         out_BTD = self.down_proj(h_BTC)
         return out_BTD
 
-    def init_params(self, cfg):
-        self.gate_proj.apply(nn.init.normal(0.0, cfg.d_embd**-0.5))
-        self.up_proj.apply(nn.init.normal(0.0, cfg.d_embd**-0.5))
-        self.down_proj.apply(nn.init.normal(0.0, self.hidden_dim**-0.5))
-
 
 class TransformerBlock(nn.Module):
     def __init__(self, d_embd, norm_eps, **kwargs):
@@ -85,12 +77,6 @@ class TransformerBlock(nn.Module):
         h_BTD = x_BTD + self.attn(self.pre_norm(x_BTD), mask_TT)
         out_BTD = h_BTD + self.ffn(self.ffn_norm(h_BTD))
         return out_BTD
-
-    def init_params(self, cfg):
-        self.pre_norm.apply(nn.init.constant(1.0))
-        self.attn.init_params(cfg)
-        self.ffn_norm.apply(nn.init.constant(1.0))
-        self.ffn.init_params(cfg)
 
 
 class LLaMA(nn.Module):
@@ -116,12 +102,26 @@ class LLaMA(nn.Module):
 
         return logits_BTV
 
-    def init_params(self, cfg):
-        self.embd_toks.apply(nn.init.normal(0.0, 1.0))
-        for layer in self.layers:
-            layer.init_params(cfg)
-        self.out_norm.apply(nn.init.constant(1.0))
-        self.lm_head.apply(nn.init.normal(0.0, cfg.d_embd**-0.5))
+
+def init_params(model):
+    mx.random.seed(3985)
+    names, weights = zip(*tree_flatten(model))
+
+    def init_weight(name, weight):
+        if 'proj' in name or 'lm_head' in name:
+            n_in = weight.shape[1]
+            return mx.random.normal(weight.shape, loc=0.0, scale=(n_in**-0.5))
+        elif 'embd_toks' in name:
+            return mx.random.normal(weight.shape, loc=0.0, scale=1.0)
+        elif 'norm' in name:
+            return mx.full(weight.shape, 1.0)
+        else:
+            raise ValueError(f'Weight {name} not initialized.')
+
+    inited_weights = tree_map(init_weight, names, weights)
+    model.update(tree_unflatten([*zip(names, inited_weights)]))
+
+    return model
 
 
 if __name__ == '__main__':
