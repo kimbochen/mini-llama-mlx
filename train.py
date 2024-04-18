@@ -75,5 +75,5 @@ def train():
 
 
 if __name__ == '__main__':
-    wandb.login(key=environ['WANDB_KEY'])
+    wandb.login(key=environ['WANDB_KEY'])  # Set WANDB_MODE="disabled" to disable
     train()
