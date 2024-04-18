@@ -1,0 +1,7 @@
+wikitext_data/
+wandb/
+__pycache__/
+.ipynb_checkpoints/
+.venv/
+tokenizer.model
+*.safetensors
