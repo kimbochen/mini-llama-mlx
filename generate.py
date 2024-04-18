@@ -23,6 +23,7 @@ def generate(prompt):
     cfg_m = LLaMAConfig(n_layers=6, d_embd=512, n_heads=8)
     model = LLaMA(**asdict(cfg_m))
     model.update(tree_unflatten([*mx.load(sys.argv[1]).items()]))
+    model.eval()
 
     cfg_g = GenerationConfig()
     tokens_BT = mx.array([tokenizer.encode(prompt, add_bos=True)], dtype=mx.uint16)
