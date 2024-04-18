@@ -1,3 +1,4 @@
+from os import environ
 from dataclasses import dataclass, asdict
 from functools import partial
 
@@ -6,6 +7,7 @@ import mlx.optimizers as optim
 from mlx import nn
 from mlx.utils import tree_flatten
 from tqdm import tqdm
+import wandb
 
 from dataset import config_dataloader
 from llama import LLaMAConfig, LLaMA
@@ -15,8 +17,8 @@ from llama import LLaMAConfig, LLaMA
 class TrainerConfig:
     bsz: int = 16
     lr: float = 1e-4
-    n_steps: int = 100
-    warmup_steps: int = 10
+    n_steps: int = 1000
+    warmup_steps: int = 100
     pad_token_id: int = 65535  # Max value of uint16
 
 
@@ -31,6 +33,7 @@ def train():
     mx.random.seed(3985)
     cfg_t = TrainerConfig()
     cfg_m = LLaMAConfig(n_layers=6, d_embd=512, n_heads=8)
+    wandb.init(project='mini-llama-mlx', config={**asdict(cfg_t), **asdict(cfg_m)})
 
     dataloader = config_dataloader(seq_len=cfg_m.seq_len, **asdict(cfg_t))
     model = LLaMA(**asdict(cfg_m))
@@ -61,14 +64,16 @@ def train():
     for inputs_BT, labels_BT in (pbar := tqdm(dataloader, total=cfg_t.n_steps)):
         loss, ppl = train_step(inputs_BT, labels_BT)
         mx.eval(state, loss, ppl)
-        pbar.set_description((
-            f'loss={loss.item():.4f} | ppl={ppl.item():.4f} | lr={optimizer.learning_rate.item():.2e} | '
-            f'peak_mem={(mx.metal.get_peak_memory() / 2**30):.2f}G'
-        ))
+
+        loss, ppl, lr = map(lambda x: x.item(), [loss, ppl, optimizer.learning_rate])
+        peak_mem = mx.metal.get_peak_memory() / 2**30
+        pbar.set_description(f'{loss=:.4f} | ppl={ppl=:.4f} | {lr=:.2e} | {peak_mem=:.2f}G')
+        wandb.log({'loss': loss, 'ppl': ppl, 'learning_rate': lr})
 
 
     mx.save_safetensors('mini-llama-wikitext', dict(tree_flatten(model)))
 
 
 if __name__ == '__main__':
+    wandb.login(key=environ['WANDB_KEY'])
     train()
