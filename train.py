@@ -1,4 +1,4 @@
-from os import environ
+import os
 from dataclasses import dataclass, asdict
 from functools import partial
 
@@ -10,16 +10,17 @@ from tqdm import tqdm
 import wandb
 
 from dataset import config_dataloader
-from llama import LLaMAConfig, LLaMA
+from llama import init_params, LLaMAConfig, LLaMA
 
 
 @dataclass
 class TrainerConfig:
     bsz: int = 16
-    lr: float = 1e-4
+    lr: float = 3e-5
     n_steps: int = 1000
-    warmup_steps: int = 100
+    warmup_steps: int = 150  # 15%
     pad_token_id: int = 65535  # Max value of uint16
+    ckpt_name: str = 'mini-llama-wikitext-lowlr'
 
 
 def build_lr_schedule(cfg_t):
@@ -30,14 +31,12 @@ def build_lr_schedule(cfg_t):
 
 
 def train():
-    mx.random.seed(3985)
     cfg_t = TrainerConfig()
     cfg_m = LLaMAConfig(n_layers=6, d_embd=512, n_heads=8)
     wandb.init(project='mini-llama-mlx', config={**asdict(cfg_t), **asdict(cfg_m)})
 
     dataloader = config_dataloader(seq_len=cfg_m.seq_len, **asdict(cfg_t))
-    model = LLaMA(**asdict(cfg_m))
-    model.init_params(cfg_m)
+    model = init_params(LLaMA(**asdict(cfg_m)))
     optimizer = optim.AdamW(learning_rate=build_lr_schedule(cfg_t))
 
 
@@ -60,20 +59,19 @@ def train():
 
 
     model.train()
-
     for inputs_BT, labels_BT in (pbar := tqdm(dataloader, total=cfg_t.n_steps)):
-        loss, ppl = train_step(inputs_BT, labels_BT)
-        mx.eval(state, loss, ppl)
+        try:
+            loss, ppl = train_step(inputs_BT, labels_BT)
+            mx.eval(state, loss, ppl)
+            loss, ppl, lr = map(lambda x: x.item(), [loss, ppl, optimizer.learning_rate])
+            wandb.log({'loss': loss, 'ppl': ppl, 'learning_rate': lr})
+            pbar.set_description(f'{loss=:.4f} | {ppl=:.4f} | {lr=:.2e}')
+        except KeyboardInterrupt:
+            break
 
-        loss, ppl, lr = map(lambda x: x.item(), [loss, ppl, optimizer.learning_rate])
-        peak_mem = mx.metal.get_peak_memory() / 2**30
-        pbar.set_description(f'{loss=:.4f} | ppl={ppl=:.4f} | {lr=:.2e} | {peak_mem=:.2f}G')
-        wandb.log({'loss': loss, 'ppl': ppl, 'learning_rate': lr})
-
-
-    mx.save_safetensors('mini-llama-wikitext', dict(tree_flatten(model)))
+    mx.save_safetensors(cfg_t.ckpt_name, dict(tree_flatten(model)))
 
 
 if __name__ == '__main__':
-    wandb.login(key=environ['WANDB_KEY'])  # Set WANDB_MODE="disabled" to disable
+    wandb.login(key=os.environ.get('WANDB_KEY', None))  # Set WANDB_MODE="disabled" to disable
     train()
