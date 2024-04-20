@@ -41,8 +41,8 @@ def config_dataloader(bsz, seq_len, pad_token_id, n_steps, **kwargs):
         train_examples.extend(mx.load(str(ex_path)).values())
 
     blk_size = seq_len + 1
-    pad_example = lambda ex: mx.pad(ex, [0, blk_size - ex.size % blk_size], pad_token_id)
-    train_examples = mx.concatenate([*map(pad_example, train_examples)], axis=0)
+    pad_sequence = lambda ex: mx.pad(ex, [0, blk_size - ex.size % blk_size], pad_token_id)
+    train_examples = mx.concatenate([pad_sequence(ex) for ex in train_examples if ex.size > seq_len], axis=0)
 
     bblk_size = bsz * blk_size  # Batch block size
     print(f'Training dataset: {train_examples.size:.3e} tokens')
