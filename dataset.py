@@ -42,22 +42,19 @@ def config_dataloader(bsz, seq_len, pad_token_id, n_steps, **kwargs):
 
     blk_size = seq_len + 1
     pad_example = lambda ex: mx.pad(ex, [0, blk_size - ex.size % blk_size], pad_token_id)
-    train_examples = [*map(pad_example, train_examples)]
-    train_examples = mx.concatenate(train_examples, axis=0)
+    train_examples = mx.concatenate([*map(pad_example, train_examples)], axis=0)
 
     bblk_size = bsz * blk_size  # Batch block size
-    n_batches = min(n_steps, train_examples.size % bblk_size)
+    print(f'Training dataset: {train_examples.size:.3e} tokens')
 
     def load_data():
-        while True:
-            for i in range(n_batches):
-                bblk = train_examples[i*bblk_size:(i+1)*bblk_size].reshape([bsz, blk_size])
-                yield bblk[:, :-1], bblk[:, 1:]
+        for i in range(n_steps):
+            bblk = train_examples[i*bblk_size:(i+1)*bblk_size].reshape([bsz, blk_size])
+            yield bblk[:, :-1], bblk[:, 1:]
 
     return load_data()
 
 
 if __name__ == '__main__':
-    dataloader = config_dataloader(4, 512, -1, 10)
-    xb, yb = next(dataloader)
-    print(xb, yb, sep='\n')
+    tokenizer = SentencePieceProcessor(model_file='tokenizer.model')
+    dataloader = config_dataloader(2, 32, -1, 10)
