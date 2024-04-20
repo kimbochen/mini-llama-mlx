@@ -33,7 +33,7 @@ def create_wikitext_dataset():
         mx.savez(f'{DATASET_DIR}/example_chunk{chunk_idx:02d}', *train_tokens[idx:idx+chunk_size])
 
 
-def config_dataloader(bsz, seq_len, pad_token_id, n_steps, **kwargs):
+def config_dataloader(bsz, seq_len, pad_token_id, **kwargs):
     train_data_dir = Path(DATASET_DIR)
     assert train_data_dir.exists(), f'Invalid path {train_data_dir}; pwd: {Path("./").absolute()}'
     train_examples = []
@@ -49,12 +49,8 @@ def config_dataloader(bsz, seq_len, pad_token_id, n_steps, **kwargs):
     n_batches = len(train_examples) - blk_size + 1
 
     def load_data():
-        step_idx = 0
         while True:
             for i in range(n_batches):
-                if step_idx == n_steps:
-                    return
-                step_idx += 1
                 bblk = train_examples[i:i+bblk_size].reshape([bsz, blk_size])
                 yield bblk[:, :-1], bblk[:, 1:]
 

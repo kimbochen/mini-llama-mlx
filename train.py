@@ -5,7 +5,7 @@ from functools import partial
 import mlx.core as mx
 import mlx.optimizers as optim
 from mlx import nn
-from mlx.utils import tree_flatten
+from mlx.utils import tree_flatten, tree_map
 from tqdm import tqdm
 import wandb
 
@@ -15,12 +15,13 @@ from llama import init_params, LLaMAConfig, LLaMA
 
 @dataclass
 class TrainerConfig:
-    bsz: int = 16
-    lr: float = 3e-5
-    n_steps: int = 1000
-    warmup_steps: int = 150  # 15%
+    bsz: int = 8
+    lr: float = 1e-4
+    n_steps: int = 500
+    grad_acc: int = 8
+    warmup_steps: int = 50     # 10%
     pad_token_id: int = 65535  # Max value of uint16
-    ckpt_name: str = 'mini-llama-wikitext-lowlr'
+    ckpt_name: str = 'mini-llama-wikitext-bsl'
 
 
 def build_lr_schedule(cfg_t):
@@ -50,25 +51,37 @@ def train():
 
     state = [model.state, optimizer.state]
     @partial(mx.compile, inputs=state, outputs=state)
-    def train_step(inputs_BT, labels_BT):
+    def train_step(inputs_BT, labels_BT, loss, grads):
         loss_and_grad = nn.value_and_grad(model, train_forward_pass)
-        loss, grads = loss_and_grad(model, inputs_BT, labels_BT)
-        optimizer.update(model, grads)
-        ppl = loss.exp()
-        return loss, ppl
+        mb_loss, mb_grads = loss_and_grad(model, inputs_BT, labels_BT)  # micro-batch
+        loss = loss + mb_loss / cfg_t.grad_acc
+        grads = tree_map(lambda g, mbg: (g + mbg / cfg_t.grad_acc), grads, mb_grads)
+        return loss, grads
 
 
     model.train()
-    for inputs_BT, labels_BT in (pbar := tqdm(dataloader, total=cfg_t.n_steps)):
+    update_steps = cfg_t.n_steps * cfg_t.grad_acc
+    pbar = tqdm(total=update_steps)
+    loss, grads = mx.zeros(1), tree_map(lambda p: mx.zeros(p.shape), model)
+
+    for (inputs_BT, labels_BT), step_idx in zip(dataloader, range(update_steps)):
         try:
-            loss, ppl = train_step(inputs_BT, labels_BT)
-            mx.eval(state, loss, ppl)
-            loss, ppl, lr = map(lambda x: x.item(), [loss, ppl, optimizer.learning_rate])
-            wandb.log({'loss': loss, 'ppl': ppl, 'learning_rate': lr})
-            pbar.set_description(f'{loss=:.4f} | {ppl=:.4f} | {lr=:.2e}')
+            loss, grads = train_step(inputs_BT, labels_BT, loss, grads)
+            mx.eval(loss, grads)
+
+            loss, lr = map(lambda x: x.item(), [loss, optimizer.learning_rate])
+            pbar.set_description(f'{loss=:.4f} | {lr=:.2e}')
+            pbar.update(1)
+
+            if ((step_idx + 1) % cfg_t.grad_acc == 0) or (step_idx == update_steps - 1):
+                optimizer.update(model, grads)
+                mx.eval(state)
+                wandb.log({'loss': loss, 'learning_rate': lr})
+                loss, grads = mx.zeros(1), tree_map(lambda p: mx.zeros(p.shape), model)
         except KeyboardInterrupt:
             break
 
+    pbar.close()
     mx.save_safetensors(cfg_t.ckpt_name, dict(tree_flatten(model)))
 
 
