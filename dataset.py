@@ -46,11 +46,10 @@ def config_dataloader(bsz, seq_len, pad_token_id, **kwargs):
     train_examples = mx.concatenate(train_examples, axis=0)
 
     bblk_size = bsz * blk_size  # Batch block size
-    n_batches = len(train_examples) - blk_size + 1
 
     def load_data():
         while True:
-            for i in range(n_batches):
+            for i in range(0, len(train_examples), blk_size):
                 bblk = train_examples[i:i+bblk_size].reshape([bsz, blk_size])
                 yield bblk[:, :-1], bblk[:, 1:]
 
