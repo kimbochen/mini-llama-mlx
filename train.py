@@ -17,8 +17,8 @@ from llama import init_params, LLaMAConfig, LLaMA
 class TrainerConfig:
     bsz: int = 16
     lr: float = 1e-3
-    n_steps: int = 500
-    warmup_steps: int = 50     # 10%
+    n_steps: int = 1800
+    warmup_steps: int = 180     # 10%
     pad_token_id: int = 65535  # Max value of uint16
     ckpt_name: str = 'mini-llama-wikitext-bsl'
 
