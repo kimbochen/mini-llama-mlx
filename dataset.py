@@ -49,7 +49,7 @@ def config_dataloader(bsz, seq_len, pad_token_id, n_steps, **kwargs):
 
     def load_data():
         for i in range(n_steps):
-            bblk = train_examples[i*bblk_size:(i+1)*bblk_size].reshape([bsz, blk_size])
+            bblk = train_examples[i*seq_len:i*seq_len+bblk_size].reshape([bsz, blk_size])
             yield bblk[:, :-1], bblk[:, 1:]
 
     return load_data()
@@ -58,3 +58,7 @@ def config_dataloader(bsz, seq_len, pad_token_id, n_steps, **kwargs):
 if __name__ == '__main__':
     tokenizer = SentencePieceProcessor(model_file='tokenizer.model')
     dataloader = config_dataloader(2, 32, -1, 10)
+    for inputs, labels in dataloader:
+        print(tokenizer.decode(inputs[0, :].tolist()), tokenizer.decode(labels[0, :].tolist()), sep='\n')
+        print(tokenizer.decode(inputs[1, :].tolist()), tokenizer.decode(labels[1, :].tolist()), sep='\n')
+        print('='*80)
