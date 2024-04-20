@@ -31,13 +31,13 @@ WikiText is small (~100M tokens) but large enough to be interesting.
 
 WikiText dataset is a collection of articles, and the one Hugging Face Dataset hosts splits it into sentences.  
 To avoid the content of two articles showing up in one sequence,
-I decided to concatenate sentences in the same article and split batches by articles.  
+I decided to concatenate sentences in the same article and split batches by articles.
 This turned out to be surprisingly difficult to get it right.
 
 The title of each article is formatted as `= Title =`, and sections `= = section title = =` or `= = = subsection title = = =`.  
-Initially I applied the heuristic that classifies a sequence as a title if it starts with exactly one `=`,
-but turns out game stats in sports are formatted in the same way as titles are: `= Win ; D =`.
-I tried to classify sentences with `;` as non-titles, but turns out there are some titles that has `;`.
+Initially I applied a heuristic that classifies a sequence as a title if it starts with exactly one `=`,
+but turns out game stats in sports are formatted in the same way as titles are: `= Win ; D =`.  
+I tried to classify sentences with `;` as non-titles, but I found that there are some titles that has `;`.  
 Even after removing game stats, some sentences that start with math equations are still misclassified, e.g. `= A * B + C =`.
 
 I learned that **creating a high quality dataset is hard, especially when we try to scale up.**  
