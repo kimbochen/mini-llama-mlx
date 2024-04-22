@@ -11,6 +11,18 @@ A simple implementation of LLaMA 2 that you can run experiments with on your Mac
 - To use the model, run `python generate.py <checkpoint_path> <prompt>`.
 
 
+## Usage
+
+The default parameter in `train.py` is tuned for a model to train for 30 minutes on an M1 MacBook Air 16GB.  
+Here's how to tune it to your own machine:
+
+1. Test the time per iteration for the maximum batch size your machine can fit without increasing the time linearly.
+   For me it's batch size 16 at ~1 sec / iteration
+1. Divide 128 by the batch size to get your gradient accumulation steps `grad_acc_steps`. For me it's `128 / 16 = 8`
+1. Divide 1800 by (the time per iteration * `grad_acc_steps`) to get `n_update_steps`. For me it's `1800 / (1 * 8) = 225`
+1. Increase `n_epochs` when the model cannot learn well
+
+
 ## Why Another Implementation
 
 I decided to write another implementation for a couple reasons:
@@ -224,18 +236,18 @@ One way to modulate the probability distribution is to set the temperature[^1].
 Temperature is a factor that we multiply with the logits to sharpen or flatten the probability distribution.  
 I personally find the formation indirect[^2], so here's the result:
 **The larger the temperature, the more chaotic the prediction (higher chance of selecting low-probability tokens).**  
-A special case is that when temperature is 0, it reduces to greedy sampling[^3].
+A special case is that when temperature is 0, it reduces to greedy sampling.
 
 - [This website](https://lukesalamone.github.io/posts/what-is-temperature/) has nice interactive plots for temperature
 - [This blog from Allen NLP](https://blog.allenai.org/a-guide-to-language-model-sampling-in-allennlp-3b1239274bc3) explains
-  more advanced techniques such as top-k and top-p sampling.
+  more advanced techniques such as top-k and top-p sampling
 
 
 [^1] The terminology is inspired by [Boltzmann distribution](https://en.wikipedia.org/wiki/Boltzmann_distribution),
      but I don't find it helpful for gaining intuition.
 [^2] Temperature $T \in (0, 1.0]$, we **divide** the logits by $t$,
      so higher $t \implies $ **smaller** logits $\implies$ flattern distribution $\implies$ more chaotic distribution.
-[^3] Since we are dividing, $t$ cannot be zero, so we have to treat 0 as a special case when implementing.
+     Since we are dividing, $t$ cannot be zero, so we have to treat 0 as a special case when implementing.
 
 
 ## Future Goals
