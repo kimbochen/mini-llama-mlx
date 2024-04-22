@@ -65,6 +65,17 @@ We count the number of steps independently from the iteration index
 because `n_steps` may be larger or smaller than the total number of batches in the dataset.
 
 
+### Epochs
+
+I realized that it is difficult for a small model to learn well with little data.  
+Due to limited compute, I decided to make the model overfit on small amount of data by repeating it.
+
+`n_epochs` specifies how many times a batch will be trained on the model.  
+This hyperparameter changes the dataset size in order to maintain the same amount of compute.  
+Specifically, `n_seqs = (bsz * n_steps) // n_epochs`,
+where `bsz * n_steps` is the total number of batches the models sees throughout the whole training.
+
+
 ## Model
 
 Model is the most flashy part of the code.  
@@ -180,14 +191,57 @@ The weight initialization scheme is as follows:
 
 ### Learning Rate Scheduling
 
+I implemented a standard linear warmup + cosine decay learning rate schedule.
+I use 10% - 15% of total update steps for warmup.
 
-### Evaluation Metric
+
+### Gradient Accumulation
+
+I decided to implement gradient accumulation to improve the gradient quality, but it makes code a little more complex.  
+Here I clarify some terminologies:
+
+| Term | Definition | Formula |
+| :- | :- | :- |
+| `n_update_steps` | The number of steps we perform a gradient update | |
+| `grad_acc_steps` | The number of steps we accumulate gradients | |
+| `n_steps` | The total number of steps | `n_steps = n_update_steps * grad_acc_steps` |
+| `warmup_raio` | The ratio of warmup steps over the number of update steps | |
+| `warmup_steps` | The number of warmup steps | `warmup_steps = n_update_steps * warmup_raio` |
+
+Command line logs every step, while WAndB only logs every update step to make the learning rate and the loss curves easier to interpret.
 
 
 ## Generation
 
+This code focuses on training, so I did not do anything fancy for generation.  
+In terms of sampling, I select the token with greatest probability (greedy sampling).  
 
-### Sampling
+Unlike training, where cross entropy loss trains the model to select the label token,
+we sample a token based on the probability distribution the model predicts,
+meaning that we might select the second or third choice tokens with some probability.
+
+One way to modulate the probability distribution is to set the temperature[^1].  
+Temperature is a factor that we multiply with the logits to sharpen or flatten the probability distribution.  
+I personally find the formation indirect[^2], so here's the result:
+**The larger the temperature, the more chaotic the prediction (higher chance of selecting low-probability tokens).**  
+A special case is that when temperature is 0, it reduces to greedy sampling[^3].
+
+- [This website](https://lukesalamone.github.io/posts/what-is-temperature/) has nice interactive plots for temperature
+- [This blog from Allen NLP](https://blog.allenai.org/a-guide-to-language-model-sampling-in-allennlp-3b1239274bc3) explains
+  more advanced techniques such as top-k and top-p sampling.
+
+
+[^1] The terminology is inspired by [Boltzmann distribution](https://en.wikipedia.org/wiki/Boltzmann_distribution),
+     but I don't find it helpful for gaining intuition.
+[^2] Temperature $T \in (0, 1.0]$, we **divide** the logits by $t$,
+     so higher $t \implies $ **smaller** logits $\implies$ flattern distribution $\implies$ more chaotic distribution.
+[^3] Since we are dividing, $t$ cannot be zero, so we have to treat 0 as a special case when implementing.
 
 
 ## Future Goals
+
+Here are some things I would do if I have more time.
+I might do it in PyTorch in the future because my MacBook Air is still too compute-constrained to develop on.
+
+- Inference: There are many interesting inference optimizations, including KV cache, speculative decoding, Medusa
+- Efficiency training: I would love to test out small-scale mixture of experts and mixture of depths models
