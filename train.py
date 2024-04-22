@@ -17,17 +17,10 @@ from llama import init_params, LLaMAConfig, LLaMA
 class TrainerConfig:
     bsz: int = 16
     lr: float = 1e-3
-    n_steps: int = 1800
-    warmup_steps: int = 180     # 10%
-    pad_token_id: int = 65535  # Max value of uint16
+    n_steps: int = 25000
+    warmup_steps: int = 2500  # 10%
+    pad_token_id: int = -1
     ckpt_name: str = 'mini-llama-wikitext-bsl'
-
-
-def build_lr_schedule(cfg_t):
-    warmup = optim.schedulers.linear_schedule(0.0, cfg_t.lr, cfg_t.warmup_steps)
-    decay = optim.cosine_decay(cfg_t.lr, cfg_t.n_steps-cfg_t.warmup_steps)
-    lr_schedule = optim.join_schedules([warmup, decay], [cfg_t.warmup_steps])
-    return lr_schedule
 
 
 def train():
@@ -35,9 +28,14 @@ def train():
     cfg_m = LLaMAConfig(n_layers=6, d_embd=256, n_heads=8)
     wandb.init(project='mini-llama-mlx', config={**asdict(cfg_t), **asdict(cfg_m)})
 
-    dataloader = config_dataloader(seq_len=cfg_m.seq_len, **asdict(cfg_t))
+    train_dl = config_dataloader(**asdict(cfg_t), split='train', seq_len=cfg_m.seq_len)
     model = init_params(LLaMA(**asdict(cfg_m)))
-    optimizer = optim.AdamW(learning_rate=build_lr_schedule(cfg_t))
+
+    lr_schedule = optim.join_schedules([
+        optim.schedulers.linear_schedule(0.0, cfg_t.lr, cfg_t.warmup_steps),
+        optim.cosine_decay(cfg_t.lr, cfg_t.n_steps-cfg_t.warmup_steps)
+    ], [cfg_t.warmup_steps])
+    optimizer = optim.AdamW(learning_rate=lr_schedule)
 
 
     def train_forward_pass(model_, inputs_BT, labels_BT):
@@ -58,7 +56,7 @@ def train():
 
 
     model.train()
-    for inputs_BT, labels_BT in (pbar := tqdm(dataloader, total=cfg_t.n_steps)):
+    for inputs_BT, labels_BT in (pbar := tqdm(train_dl(), total=cfg_t.n_steps)):
         try:
             loss = train_step(inputs_BT, labels_BT)
             mx.eval(state, loss)
