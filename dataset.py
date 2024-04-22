@@ -1,64 +1,87 @@
+import logging
 from pathlib import Path
 
 import mlx.core as mx
 from datasets import load_dataset
+from joblib import Memory
 from sentencepiece import SentencePieceProcessor
 from tqdm import tqdm
 
-DATASET_DIR = 'wikitext_data/train/'
+
+logging.basicConfig(level=logging.INFO)
+memory = Memory('.data_cache/', verbose=0)
 
 
-def create_wikitext_dataset():
-    print(f'Creating WikiText dataset at {DATASET_DIR}...')
+def create_wikitext_dataset(split):
+    '''
+    Preprocess the WikiText dataset.
+    Output:
+        text_seqs : List[str] : Processed text sequences.
+    '''
+    logging.info(f'Loading WikiText {split} dataset ...')
     dataset = load_dataset('wikitext', 'wikitext-103-v1')
+    corpus = dataset[split]['text']
 
-    examples = []
-    example = train_text[1]  # train_text[0] is emtpy
-    for text in train_text[2:]:
-        if (text[:3] == ' = ' and text[-4:] == ' = \n') and text[3].isupper():
-            examples.append(example)
-            example = text
+    is_title = lambda text: text[:3] == ' = ' and text[-4:] == ' = \n' and text[3].isupper()
+    text_seqs = []
+    text_seq = corpus[1]  # corpus[0] is an empty string
+
+    for i, text in enumerate(corpus[2:], start=2):
+        if (corpus[i-1] == corpus[i-2] == '') and is_title(text):
+            text_seqs.append(text_seq)  # Store text sequence when found a new title
+            text_seq = text
         else:
-            example += text
+            text_seq += text
+    else:
+        text_seqs.append(text_seq)  # The last text sequence
 
-    sp_model = SentencePieceProcessor(model_file='tokenizer.model')
-    def encode(text):
-        tokens = sp_model.encode(text, add_bos=True, add_eos=True)
-        token_arr = mx.array(tokens, dtype=mx.uint16)
-        return token_arr
-    train_tokens = [encode(example) for example in tqdm(examples)]
-
-    chunk_size = 1000
-    for chunk_idx, idx in enumerate(range(0, len(train_tokens), chunk_size)):
-        mx.savez(f'{DATASET_DIR}/example_chunk{chunk_idx:02d}', *train_tokens[idx:idx+chunk_size])
+    return text_seqs
 
 
-def config_dataloader(bsz, seq_len, pad_token_id, n_steps, **kwargs):
-    train_data_dir = Path(DATASET_DIR)
-    assert train_data_dir.exists(), f'Invalid path {train_data_dir}; pwd: {Path("./").absolute()}'
-    train_examples = []
-    for ex_path in sorted(train_data_dir.glob('*.npz')):
-        train_examples.extend(mx.load(str(ex_path)).values())
+@memory.cache
+def prepare_dataset(split, seq_len, pad_token_id, **kwargs):
+    '''
+    Creates the dataset, tokenize the sequences, splits token sequences to specified length.
+    Output:
+        token_seqs : mx.array [Number of batches, seq_len]
+    '''
+    text_seqs = create_wikitext_dataset(split)
 
+    logging.info('Tokenizing dataset ...')
+    tokenizer = SentencePieceProcessor(model_file='tokenizer.model')
     blk_size = seq_len + 1
-    pad_sequence = lambda ex: mx.pad(ex, [0, blk_size - ex.size % blk_size], pad_token_id)
-    train_examples = mx.concatenate([pad_sequence(ex) for ex in train_examples if ex.size > seq_len], axis=0)
+    token_seqs = []
 
-    bblk_size = bsz * blk_size  # Batch block size
-    print(f'Training dataset: {train_examples.size:.3e} tokens')
+    for text_seq in tqdm(text_seqs):
+        token_seq = tokenizer.encode(text_seq, add_bos=True, add_eos=True)
+        token_seq = mx.array(token_seq, dtype=mx.int16)
+        token_seq = mx.pad(token_seq, [0, blk_size - token_seq.size % blk_size], pad_token_id)
+        token_seqs.append(token_seq.reshape(-1, blk_size))
 
-    def load_data():
-        for i in range(n_steps):
-            bblk = train_examples[i*seq_len:i*seq_len+bblk_size].reshape([bsz, blk_size])
-            yield bblk[:, :-1], bblk[:, 1:]
+    token_seqs = mx.concatenate(token_seqs, axis=0)
+    logging.info(f'Tokenized {token_seqs.shape[0]} batches = {token_seqs.size} tokens.')
 
-    return load_data()
+    return token_seqs
+
+
+def config_dataloader(bsz, n_steps, **kwargs):
+    token_seqs = prepare_dataset(**kwargs)
+    n_seqs = token_seqs.shape[0]
+
+    def load_data_batch():
+        step_idx = 0
+        while True:
+            for idx in range(0, n_seqs, bsz):
+                bblk = token_seqs[idx:idx+bsz, :]
+                yield bblk[:, :-1], bblk[:, 1:]
+                step_idx += 1
+                if step_idx == n_steps:
+                    return
+
+    return load_data_batch
 
 
 if __name__ == '__main__':
-    tokenizer = SentencePieceProcessor(model_file='tokenizer.model')
-    dataloader = config_dataloader(2, 32, -1, 10)
-    for inputs, labels in dataloader:
-        print(tokenizer.decode(inputs[0, :].tolist()), tokenizer.decode(labels[0, :].tolist()), sep='\n')
-        print(tokenizer.decode(inputs[1, :].tolist()), tokenizer.decode(labels[1, :].tolist()), sep='\n')
-        print('='*80)
+    load_train_data = config_dataloader(256, 10, split='train', seq_len=32, pad_token_id=-1)
+    for inputs, labels in load_train_data():
+        print(inputs.shape, labels.shape)
