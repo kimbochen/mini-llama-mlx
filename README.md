@@ -130,9 +130,12 @@ they additionally rounded the number up to a multiple of 256.
 
 SwiGLU inherits from many different components.
 
-- GLU: [Gated Linear Units](https://paperswithcode.com/method/glu) proposes $GLU(a, b) = \sigma(a) \otimes b$  
-- Swish-1: Also known as SiLU (Sigmoid-weighted Linear Unit) is the activation function $Swish_1(x) = x \cdot \sigma(x)$
-- SwiGLU: [SwiGLU](https://paperswithcode.com/method/swiglu) combines the two: $SwiGLU(x) = Swish_1(x W_1) \otimes (x W_2)
+GLU: [Gated Linear Units](https://paperswithcode.com/method/glu) proposes $GLU(a, b) = \sigma(a) \otimes b$
+
+[Swish-1](https://paperswithcode.com/method/swish), aka SiLU (Sigmoid-weighted Linear Unit),
+is the activation function $Swish_1(x) = x \cdot \sigma(x)$
+
+[SwiGLU](https://paperswithcode.com/method/swiglu) combines the two: $SwiGLU(x) = Swish_1(x W_1) \otimes (x W_2)$
 
 
 ### Model
@@ -145,7 +148,7 @@ Every prediction is independent, so we can calculate the loss for every predicti
 and average across both the batch and the sequence dimensions.
 
 We also have to remove predictions for pad tokens.
-We do this by using a mask to zero out tokens predictions whose inputs are pad tokens.
+We do this with a mask, zeroing out tokens predictions whose inputs are pad tokens.
 We can also use the mask to count the number of non-pad-token predictions, which is useful for averaging the loss.
 
 
