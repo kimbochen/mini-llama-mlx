@@ -244,10 +244,10 @@ A special case is that when temperature is 0, it reduces to greedy sampling.
   more advanced techniques such as top-k and top-p sampling
 
 
-[^1] The terminology is inspired by [Boltzmann distribution](https://en.wikipedia.org/wiki/Boltzmann_distribution),
+[^1]: The terminology is inspired by [Boltzmann distribution](https://en.wikipedia.org/wiki/Boltzmann_distribution),
      but I don't find it helpful for gaining intuition.
-[^2] Temperature $T \in (0, 1.0]$, we **divide** the logits by $t$,
-     so higher $t \implies $ **smaller** logits $\implies$ flattern distribution $\implies$ more chaotic distribution.
+[^2]: Temperature $T \in (0, 1.0]$, we **divide** the logits by $t$,
+     so higher $t \implies$ **smaller** logits $\implies$ flattern distribution $\implies$ more chaotic distribution.
      Since we are dividing, $t$ cannot be zero, so we have to treat 0 as a special case when implementing.
 
 
