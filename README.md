@@ -247,7 +247,7 @@ A special case is that when temperature is 0, it reduces to greedy sampling.
 [^1]: The terminology is inspired by [Boltzmann distribution](https://en.wikipedia.org/wiki/Boltzmann_distribution),
      but I don't find it helpful for gaining intuition.
 [^2]: Temperature T is in (0.0, 1.0], we **divide** the logits by T,
-     so higher T --> **smaller** logits --> flattern distribution --> more chaotic distribution.
+     so higher T --> **smaller** logits --> flatter distribution --> more chaotic distribution.
      Since we are dividing, T cannot be zero, so we have to treat 0 as a special case when implementing.
 
 
