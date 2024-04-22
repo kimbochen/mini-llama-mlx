@@ -39,7 +39,7 @@ def create_wikitext_dataset(split):
 
 
 @memory.cache
-def prepare_dataset(split, seq_len, pad_token_id, **kwargs):
+def prepare_dataset(split, seq_len, pad_token_id):
     '''
     Creates the dataset, tokenize the sequences, splits token sequences to specified length.
     Output:
@@ -64,8 +64,8 @@ def prepare_dataset(split, seq_len, pad_token_id, **kwargs):
     return token_seqs
 
 
-def config_dataloader(bsz, n_steps, **kwargs):
-    token_seqs = prepare_dataset(**kwargs)
+def config_dataloader(bsz, n_steps, split, seq_len, pad_token_id, **kwargs):
+    token_seqs = prepare_dataset(split, seq_len, pad_token_id)
     n_seqs = token_seqs.shape[0]
 
     def load_data_batch():
