@@ -17,11 +17,12 @@ from llama import init_params, LLaMAConfig, LLaMA
 class TrainerConfig:
     bsz: int = 16
     lr: float = 1e-3
-    n_update_steps: int = 900
-    grad_acc_steps: int = 16
+    n_update_steps: int = 225
+    grad_acc_steps: int = 8
     warmup_ratio: float = 0.1
     n_steps: int = field(init=False)
     warmup_steps: int = field(init=False)
+    n_epochs: int = 100
     pad_token_id: int = -1
     ckpt_name: str = 'mini-llama-wikitext-bsl'
 

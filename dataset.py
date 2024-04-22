@@ -64,9 +64,10 @@ def prepare_dataset(split, seq_len, pad_token_id):
     return token_seqs
 
 
-def config_dataloader(bsz, n_steps, split, seq_len, pad_token_id, **kwargs):
+def config_dataloader(bsz, n_steps, n_epochs, split, seq_len, pad_token_id, **kwargs):
     token_seqs = prepare_dataset(split, seq_len, pad_token_id)
-    n_seqs = token_seqs.shape[0]
+    n_seqs = (bsz * n_steps) // n_epochs
+    logging.info(f'Training on {n_seqs} sequences for {n_epochs} epochs.')
 
     def load_data_batch():
         step_idx = 0
