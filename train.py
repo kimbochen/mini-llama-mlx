@@ -1,5 +1,5 @@
 import os
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass, field
 from functools import partial
 
 import mlx.core as mx
@@ -17,11 +17,17 @@ from llama import init_params, LLaMAConfig, LLaMA
 class TrainerConfig:
     bsz: int = 16
     lr: float = 1e-3
-    n_steps: int = 112 * 16
-    warmup_steps: int = 11
+    n_update_steps: int = 900
     grad_acc_steps: int = 16
+    warmup_ratio: float = 0.1
+    n_steps: int = field(init=False)
+    warmup_steps: int = field(init=False)
     pad_token_id: int = -1
     ckpt_name: str = 'mini-llama-wikitext-bsl'
+
+    def __post_init__(self):
+        self.n_steps = self.n_update_steps * self.grad_acc_steps
+        self.warmup_steps = int(self.n_update_steps * self.warmup_ratio)
 
 
 def train():
@@ -35,7 +41,7 @@ def train():
 
     lr_schedule = optim.join_schedules([
         optim.schedulers.linear_schedule(0.0, cfg_t.lr, cfg_t.warmup_steps),
-        optim.cosine_decay(cfg_t.lr, cfg_t.n_steps-cfg_t.warmup_steps)
+        optim.cosine_decay(cfg_t.lr, cfg_t.n_update_steps-cfg_t.warmup_steps)
     ], [cfg_t.warmup_steps])
     optimizer = optim.AdamW(learning_rate=lr_schedule)
 
@@ -65,15 +71,15 @@ def train():
             loss, grads = train_step(inputs_BT, labels_BT, grads)
             mx.eval(loss, grads)
 
+            loss, lr = map(lambda x: x.item(), [loss, optimizer.learning_rate])
+            pbar.set_description(f'{loss=:.4f} | {lr=:.2e} | peak_mem={(mx.metal.get_peak_memory()/2**30):.2f}GB')
+            pbar.update(1)
+
             if ((step + 1) % cfg_t.grad_acc_steps == 0) or (step == cfg_t.n_steps - 1):
                 optimizer.update(model, grads)
                 mx.eval(model.state, optimizer.state)
                 grads = tree_map(lambda p: mx.zeros(p.shape), model)
-
-            loss, lr = map(lambda x: x.item(), [loss, optimizer.learning_rate])
-            wandb.log({'loss': loss, 'learning_rate': lr})
-            pbar.set_description(f'{loss=:.4f} | {lr=:.2e} | peak_mem={(mx.metal.get_peak_memory()/2**30):.2f}GB')
-            pbar.update(1)
+                wandb.log({'loss': loss, 'learning_rate': lr})
         except KeyboardInterrupt:
             break
 
