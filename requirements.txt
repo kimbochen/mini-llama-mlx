@@ -6,3 +6,4 @@ ipywidgets==8.1.2
 datasets==2.18.0
 asitop==0.0.24
 wandb==0.16.6
+joblib==1.4.0
