@@ -130,7 +130,7 @@ they additionally rounded the number up to a multiple of 256.
 
 SwiGLU inherits from many different components.
 
-GLU: [Gated Linear Units](https://paperswithcode.com/method/glu) proposes $GLU(a, b) = \sigma(a) \otimes b$
+GLU ([Gated Linear Units](https://paperswithcode.com/method/glu)) proposes $GLU(a, b) = \sigma(a) \otimes b$
 
 [Swish-1](https://paperswithcode.com/method/swish), aka SiLU (Sigmoid-weighted Linear Unit),
 is the activation function $Swish_1(x) = x \cdot \sigma(x)$
@@ -154,8 +154,28 @@ We can also use the mask to count the number of non-pad-token predictions, which
 
 ## Training
 
+Now we get to train some models and stare at the loss plot.
+
 
 ### Weight Initialization
+
+Weight initialization is important. It dictates how smoothly your model starts.
+
+![](imgs/init-vs-no-init.png)
+
+> Initialized (light blue) vs. randomly initialized (green)
+
+- [Pythia](https://arxiv.org/abs/2304.01373) and [GPT-NeoX-20B](https://arxiv.org/abs/2204.06745) both cited GPT-J-6B for the intialization method,
+  but I cannot find it in the Mesh Transformer repo. However, GPT-NeoX repo provides implementations
+  [here](https://github.com/EleutherAI/gpt-neox/blob/01657aa243aed07701660a2dd486434349daa72e/megatron/model/init_functions.py).
+- I adopted the initialization of [PaLM](https://arxiv.org/abs/2204.02311v5) because the model architecture is more similar.
+
+The weight initialization scheme is as follows:
+
+- Linear layers are initialized with a normal distribution of mean 0 std $\displaystyle \frac{1}{\sqrt{n}}$,
+  where $n$ is the input dimension
+- The input embedding layer is initialized with a standard normal distribution (mean 0 std 10)
+- RMSNorm layers are initialized with constants 1
 
 
 ### Learning Rate Scheduling
