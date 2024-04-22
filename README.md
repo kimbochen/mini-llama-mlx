@@ -178,6 +178,7 @@ We can also use the mask to count the number of non-pad-token predictions, which
 ## Training
 
 Now we get to train some models and stare at the loss plot.
+Here is my [WAndB project](https://wandb.ai/kimbochen/mini-llama-mlx) for reference.
 
 
 ### Weight Initialization
